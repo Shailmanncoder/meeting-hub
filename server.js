@@ -16,9 +16,8 @@ app.get('/', (req, res) => {
     res.render('home');
 });
 
-// 3. API: Generate Link (CRITICAL FOR BUTTON TO WORK)
+// 3. API: Generate Link
 app.get('/api/new-room', (req, res) => {
-    console.log("API: Generating new room ID...");
     res.json({ roomId: uuidV4() });
 });
 
@@ -37,6 +36,7 @@ app.get('/:room', (req, res) => {
 
 // 5. Socket Logic
 const roomHosts = {};
+
 io.on('connection', socket => {
     socket.on('join-room-init', (roomId, name, isHost, peerId) => {
         socket.join(roomId);
@@ -49,6 +49,7 @@ io.on('connection', socket => {
             if (hostSocket) {
                 io.to(hostSocket).emit('request-entry', { socketId: socket.id, name, peerId });
             } else {
+                // Auto-admit if no host present (for testing)
                 socket.emit('entry-granted'); 
                 socket.to(roomId).emit('user-connected', peerId, name);
             }
@@ -62,6 +63,12 @@ io.on('connection', socket => {
         } else {
             io.to(socketId).emit('entry-denied');
         }
+    });
+
+    // NEW: Handle Camera/Mic Status
+    socket.on('toggle-media', (data) => {
+        // Tell everyone else to update this user's card
+        socket.to(data.roomId).emit('update-media-status', data); 
     });
 
     socket.on('message', (message) => {
