@@ -6,15 +6,15 @@
     <title>Meeting Hub - Home</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Specific styles for Landing Page */
         .home-container {
             display: flex; justify-content: center; align-items: center;
             height: 100vh; flex-direction: column;
+            background: #121212; color: white;
         }
         .card {
-            background: #242324; padding: 40px; border-radius: 10px;
+            background: #1E1E1E; padding: 40px; border-radius: 10px;
             width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            text-align: center;
+            text-align: center; border: 1px solid #333;
         }
         .btn-group { display: flex; justify-content: space-between; margin-bottom: 20px; }
         .tab-btn {
@@ -23,7 +23,7 @@
         }
         .tab-btn.active { color: #00d2ff; border-bottom: 2px solid #00d2ff; }
         input {
-            width: 100%; padding: 12px; margin: 10px 0; background: #333;
+            width: 100%; padding: 12px; margin: 10px 0; background: #2A2A2A;
             border: 1px solid #444; color: white; border-radius: 5px;
         }
         button.action-btn {
@@ -33,11 +33,25 @@
         }
         button.action-btn:hover { background: #00b8e6; }
         .hidden { display: none; }
+        
+        /* New Link Display Area */
+        #generated-link-area {
+            margin-top: 15px; padding: 10px; background: #2A2A2A;
+            border: 1px dashed #555; display: none;
+        }
+        #link-text {
+            word-break: break-all; font-family: monospace; color: #00d2ff;
+            margin-bottom: 10px; font-size: 0.9rem;
+        }
+        .copy-btn {
+            background: #444; color: white; border: none; padding: 5px 10px;
+            border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+        }
     </style>
 </head>
 <body>
     <div class="home-container">
-        <h1>Meeting Hub</h1>
+        <h1 style="color:#00d2ff; margin-bottom:20px;">Meeting Hub</h1>
         <div class="card">
             <div class="btn-group">
                 <button class="tab-btn active" onclick="switchTab('create')">Create Meeting</button>
@@ -45,20 +59,28 @@
             </div>
 
             <div id="create-section">
-                <input type="text" id="create-name" placeholder="Your Name">
-                <input type="text" id="meeting-topic" placeholder="Meeting Topic (Optional)">
-                <button class="action-btn" onclick="createMeeting()">Generate Link</button>
+                <input type="text" id="create-name" placeholder="Your Name (Host)">
+                <button class="action-btn" onclick="generateLink()">Generate Link</button>
+                
+                <div id="generated-link-area">
+                    <p style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">Send this link to others:</p>
+                    <div id="link-text">...</div>
+                    <button class="copy-btn" onclick="copyLink()">Copy</button>
+                    <button class="action-btn" style="background:#27AE60; color:white; margin-top:10px;" onclick="enterAsHost()">Join Now</button>
+                </div>
             </div>
 
             <div id="join-section" class="hidden">
                 <input type="text" id="join-name" placeholder="Your Name">
-                <input type="text" id="meeting-id" placeholder="Enter Meeting Link or ID">
+                <input type="text" id="meeting-id" placeholder="Paste Link Here">
                 <button class="action-btn" onclick="joinMeeting()">Join Meeting</button>
             </div>
         </div>
     </div>
 
     <script>
+        let generatedRoomId = "";
+
         function switchTab(tab) {
             if(tab === 'create') {
                 document.getElementById('create-section').classList.remove('hidden');
@@ -73,21 +95,46 @@
             }
         }
 
-        function createMeeting() {
+        async function generateLink() {
             const name = document.getElementById('create-name').value;
-            if(!name) return alert("Please enter your name");
-            // Call server to generate ID (or do it here for simplicity)
-            // We'll redirect to a special URL that flags you as HOST
-            window.location.href = `/create?name=${encodeURIComponent(name)}`;
+            if(!name) return alert("Please enter your name first!");
+
+            // 1. Ask Server for a new ID
+            const response = await fetch('/api/new-room');
+            const data = await response.json();
+            generatedRoomId = data.roomId;
+
+            // 2. Show the link on screen
+            const fullLink = window.location.origin + "/" + generatedRoomId;
+            document.getElementById('link-text').innerText = fullLink;
+            document.getElementById('generated-link-area').style.display = 'block';
+        }
+
+        function copyLink() {
+            const text = document.getElementById('link-text').innerText;
+            navigator.clipboard.writeText(text);
+            alert("Link copied!");
+        }
+
+        function enterAsHost() {
+            const name = document.getElementById('create-name').value;
+            // Go to room with host=true flag
+            window.location.href = `/${generatedRoomId}?name=${encodeURIComponent(name)}&host=true`;
         }
 
         function joinMeeting() {
             const name = document.getElementById('join-name').value;
             let link = document.getElementById('meeting-id').value;
-            if(!name || !link) return alert("Fill in all fields");
+            if(!name || !link) return alert("Please fill in name and link!");
             
-            // Extract ID if full link is pasted
-            const roomId = link.split('/').pop(); 
+            // Clean the link to just get ID (removes 'http://site.com/')
+            // If they paste full URL, we split it. If just ID, we use it.
+            let roomId = link;
+            if (link.includes("/")) {
+                roomId = link.split('/').pop(); // Gets the last part of URL
+            }
+            
+            // Go to room (Guest mode)
             window.location.href = `/${roomId}?name=${encodeURIComponent(name)}`;
         }
     </script>
