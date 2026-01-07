@@ -18,65 +18,64 @@
   <div id="waiting-screen" class="overlay">
     <div class="loader-box">
         <h2>Please Wait</h2>
-        <p>Waiting for host approval...</p>
+        <p>Connecting to secure server...</p>
         <div class="spinner"></div>
     </div>
   </div>
 
   <div id="admit-modal" class="modal hidden">
     <div class="modal-content">
-        <h3><span id="guest-name">User</span> wants to join</h3>
+        <h3><span id="guest-name">User</span> is knocking...</h3>
         <div class="modal-actions">
-            <button onclick="respondToUser('deny')" class="deny-btn">Deny</button>
+            <button onclick="respondToUser('deny')" class="deny-btn">Dismiss</button>
             <button onclick="respondToUser('allow')" class="allow-btn">Admit</button>
         </div>
     </div>
   </div>
 
   <div class="main hidden" id="main-interface">
-    <div class="main__left">
-      <div style="padding: 10px; text-align: center; background: #1E1E1E; border-bottom: 1px solid #333;">
-          <h3 style="color: #00d2ff; margin: 0;"><%= meetingTopic %></h3>
-      </div>
+    
+    <div class="info-badge">
+        <span class="topic-text"><%= meetingTopic %></span>
+        <span class="timer-text" id="meeting-timer">00:00</span>
+    </div>
 
+    <div class="main__left">
       <div class="main__videos">
         <div id="video-grid"></div>
       </div>
       
-      <div class="main__controls">
-        <div class="main__controls__block">
-          <div onclick="muteUnmute()" class="main__controls__button main__mute_button">
-            <i class="fas fa-microphone"></i><span>Mute</span>
+      <div class="control-bar-wrapper">
+          <div class="glass-controls">
+            <div onclick="muteUnmute()" class="control-btn main__mute_button" title="Mute">
+                <i class="fas fa-microphone"></i>
+            </div>
+            <div onclick="playStop()" class="control-btn main__video_button" title="Camera">
+                <i class="fas fa-video"></i>
+            </div>
+            <div onclick="raiseHand()" class="control-btn hand-btn" title="Raise Hand">
+                <i class="fas fa-hand-paper"></i>
+            </div>
+            <div onclick="shareScreen()" class="control-btn" title="Share Screen">
+                <i class="fas fa-desktop"></i>
+            </div>
+            <div onclick="toggleChat()" class="control-btn" title="Chat">
+                <i class="fas fa-comment-alt"></i>
+            </div>
+            <div onclick="window.location.href='/'" class="control-btn leave-btn" title="Leave">
+                <i class="fas fa-phone-slash"></i>
+            </div>
           </div>
-          <div onclick="playStop()" class="main__controls__button main__video_button">
-            <i class="fas fa-video"></i><span>Stop Video</span>
-          </div>
-        </div>
-        
-        <div class="main__controls__block">
-          <div onclick="shareScreen()" class="main__controls__button">
-            <i class="fas fa-desktop"></i><span>Share</span>
-          </div>
-          <div onclick="toggleChat()" class="main__controls__button">
-            <i class="fas fa-comment-alt"></i><span>Chat</span>
-          </div>
-        </div>
-
-        <div class="main__controls__block">
-          <div class="main__controls__button" onclick="window.location.href='/'">
-            <span class="leave_meeting">Leave</span>
-          </div>
-        </div>
       </div>
     </div>
     
     <div class="main__right" id="chat-section">
-      <div class="main__header"><h6>Chat</h6></div>
+      <div class="main__header"><h6>Live Chat</h6></div>
       <div class="main__chat_window">
         <ul class="messages"></ul>
       </div>
       <div class="main__message_container">
-        <input id="chat_message" type="text" placeholder="Type message...">
+        <input id="chat_message" type="text" placeholder="Type a message...">
       </div>
     </div>
   </div>

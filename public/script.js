@@ -1,11 +1,10 @@
 const socket = io('/');
 const videoGrid = document.getElementById('video-grid');
-const myPeer = new Peer(undefined); // Using Public Cloud
+const myPeer = new Peer(undefined); 
 const myVideo = document.createElement('video');
 myVideo.muted = true;
 const peers = {};
 
-// 1. Get URL Params (Name, Host Status)
 const urlParams = new URLSearchParams(window.location.search);
 const userName = urlParams.get('name') || "User";
 const isHost = urlParams.get('host');
@@ -13,35 +12,41 @@ const isHost = urlParams.get('host');
 let myPeerId = null;
 let pendingSocketId = null;
 let pendingPeerId = null;
-let myVideoStream; // Variable to store our video stream
+let myVideoStream;
 
-// 2. Setup Peer
 myPeer.on('open', id => {
     myPeerId = id;
-    // Don't join yet! Ask Server first.
     socket.emit('join-room-init', ROOM_ID, userName, isHost, id);
 });
 
-// 3. Server Responses
+// --- TIMER LOGIC ---
+function startTimer() {
+    let seconds = 0;
+    const timerEl = document.getElementById('meeting-timer');
+    setInterval(() => {
+        seconds++;
+        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const secs = (seconds % 60).toString().padStart(2, '0');
+        timerEl.innerText = `${mins}:${secs}`;
+    }, 1000);
+}
 
-// A. ACCESS GRANTED (For Host or Approved Guest)
+// --- SERVER EVENTS ---
+
 socket.on('entry-granted', () => {
     document.getElementById('waiting-screen').style.display = 'none';
     document.getElementById('main-interface').classList.remove('hidden');
     document.getElementById('main-interface').style.display = 'flex';
-    
-    // Start Video & Chat features
     startVideo();
+    startTimer(); // Start the hi-tech timer
 });
 
-// B. ACCESS DENIED
 socket.on('entry-denied', () => {
     document.querySelector('#waiting-screen h2').innerText = "Access Denied";
-    document.querySelector('#waiting-screen p').innerText = "The host declined your request.";
+    document.querySelector('#waiting-screen p').innerText = "Host declined entry.";
     document.querySelector('.spinner').style.display = 'none';
 });
 
-// C. HOST: Request Received
 socket.on('request-entry', (data) => {
     pendingSocketId = data.socketId;
     pendingPeerId = data.peerId;
@@ -50,14 +55,21 @@ socket.on('request-entry', (data) => {
     document.getElementById('admit-modal').style.display = 'flex';
 });
 
-// 4. Video & Chat Logic (Only runs after entry granted)
+// NEW: Raise Hand Listener
+socket.on('hand-raised', (peerId) => {
+    alert("Someone raised their hand! 👋");
+    // (Optional: add visual border logic here if we tracked video elements by ID)
+});
+
+
+// --- VIDEO & FEATURES ---
+
 function startVideo() {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
         myVideoStream = stream;
         addVideoStream(myVideo, stream);
         
-        // Answer calls
         myPeer.on('call', call => {
             call.answer(stream);
             const video = document.createElement('video');
@@ -66,12 +78,11 @@ function startVideo() {
             });
         });
 
-        // If new user connected (already approved by host)
         socket.on('user-connected', (peerId, uName) => {
             connectToNewUser(peerId, stream);
         });
 
-        // --- CHAT LOGIC ---
+        // Chat
         let text = document.querySelector("#chat_message");
         document.addEventListener("keydown", (e) => {
             if (e.key === "Enter" && text.value.length !== 0) {
@@ -83,7 +94,7 @@ function startVideo() {
         socket.on("createMessage", (message) => {
             const ul = document.querySelector(".messages");
             const li = document.createElement("li");
-            li.innerHTML = `<b>User:</b><br/>${message}`;
+            li.innerHTML = `<span style="color:#00d2ff; font-weight:bold;">User:</span> ${message}`;
             ul.append(li);
             scrollToBottom();
         });
@@ -114,32 +125,29 @@ function scrollToBottom() {
   d.scrollTop = d.scrollHeight;
 }
 
-// 5. Host Actions
-window.respondToUser = (action) => {
-    socket.emit('respond-entry', { 
-        socketId: pendingSocketId, 
-        peerId: pendingPeerId,
-        action: action 
-    });
-    document.getElementById('admit-modal').style.display = 'none';
-};
+// --- CONTROLS ---
 
-window.shareLink = () => {
-    const cleanURL = window.location.origin + window.location.pathname;
-    navigator.clipboard.writeText(cleanURL);
-    alert("Link Copied! Send this to friends.");
+window.raiseHand = () => {
+    // Send signal to everyone
+    socket.emit('message', "✋ RAISED HAND"); // Simple version using chat
+    alert("You raised your hand!");
 }
 
-// --- CONTROLS: MUTE, STOP VIDEO, SCREEN SHARE ---
+window.respondToUser = (action) => {
+    socket.emit('respond-entry', { socketId: pendingSocketId, peerId: pendingPeerId, action });
+    document.getElementById('admit-modal').style.display = 'none';
+};
 
 window.muteUnmute = () => {
   const enabled = myVideoStream.getAudioTracks()[0].enabled;
   if (enabled) {
     myVideoStream.getAudioTracks()[0].enabled = false;
-    setUnmuteButton();
+    document.querySelector('.main__mute_button').classList.add("unmute");
+    document.querySelector('.main__mute_button').innerHTML = `<i class="fas fa-microphone-slash"></i>`;
   } else {
-    setMuteButton();
     myVideoStream.getAudioTracks()[0].enabled = true;
+    document.querySelector('.main__mute_button').classList.remove("unmute");
+    document.querySelector('.main__mute_button').innerHTML = `<i class="fas fa-microphone"></i>`;
   }
 }
 
@@ -147,10 +155,12 @@ window.playStop = () => {
   let enabled = myVideoStream.getVideoTracks()[0].enabled;
   if (enabled) {
     myVideoStream.getVideoTracks()[0].enabled = false;
-    setPlayVideo();
+    document.querySelector('.main__video_button').classList.add("stop");
+    document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video-slash"></i>`;
   } else {
-    setStopVideo();
     myVideoStream.getVideoTracks()[0].enabled = true;
+    document.querySelector('.main__video_button').classList.remove("stop");
+    document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video"></i>`;
   }
 }
 
@@ -180,31 +190,9 @@ window.toggleChat = () => {
     const chat = document.getElementById("chat-section");
     if(chat.style.display === "none") {
         chat.style.display = "flex";
-        document.querySelector(".main__left").style.flex = "0.8";
+        document.querySelector(".main__left").style.flex = "0.75";
     } else {
         chat.style.display = "none";
         document.querySelector(".main__left").style.flex = "1";
     }
-}
-
-// Button Styling Helpers
-const setMuteButton = () => {
-  const html = `<i class="fas fa-microphone"></i><span>Mute</span>`;
-  document.querySelector('.main__mute_button').innerHTML = html;
-  document.querySelector('.main__mute_button').classList.remove("unmute");
-}
-const setUnmuteButton = () => {
-  const html = `<i class="unmute fas fa-microphone-slash"></i><span class="unmute">Unmute</span>`;
-  document.querySelector('.main__mute_button').innerHTML = html;
-  document.querySelector('.main__mute_button').classList.add("unmute");
-}
-const setStopVideo = () => {
-  const html = `<i class="fas fa-video"></i><span>Stop Video</span>`;
-  document.querySelector('.main__video_button').innerHTML = html;
-  document.querySelector('.main__video_button').classList.remove("stop");
-}
-const setPlayVideo = () => {
-  const html = `<i class="stop fas fa-video-slash"></i><span class="stop">Play Video</span>`;
-  document.querySelector('.main__video_button').innerHTML = html;
-  document.querySelector('.main__video_button').classList.add("stop");
 }
