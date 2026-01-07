@@ -4,17 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meeting Hub</title>
-    <link rel="stylesheet" href="style.css">
     <style>
+        /* RESET BODY so it doesn't conflict with other pages */
+        body {
+            margin: 0; padding: 0;
+            background-color: #121212;
+            font-family: sans-serif;
+            color: white;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+        }
+
         .home-container {
-            display: flex; justify-content: center; align-items: center;
-            height: 100vh; flex-direction: column; background: #121212; color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            width: 100%;
+            flex-direction: column;
         }
+
         .card {
-            background: #1E1E1E; padding: 30px; border-radius: 12px;
-            width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            text-align: center; border: 1px solid #333;
+            background: #1E1E1E;
+            padding: 30px;
+            border-radius: 12px;
+            width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            border: 1px solid #333;
         }
+
         .btn-group { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; }
         .tab-btn {
             background: none; border: none; color: #888; font-size: 16px; font-weight: bold;
@@ -24,7 +44,7 @@
         
         input {
             width: 100%; padding: 12px; margin: 8px 0; background: #2A2A2A;
-            border: 1px solid #444; color: white; border-radius: 6px; outline: none;
+            border: 1px solid #444; color: white; border-radius: 6px; outline: none; box-sizing: border-box;
         }
         input:focus { border-color: #00d2ff; }
         
@@ -36,7 +56,6 @@
         button.action-btn:hover { background: #00b8e6; }
         .hidden { display: none; }
         
-        /* Link Display Area */
         #generated-link-area {
             margin-top: 20px; padding: 15px; background: #181818;
             border: 1px dashed #555; display: none; border-radius: 6px;
@@ -62,7 +81,7 @@
 
             <div id="create-section">
                 <input type="text" id="create-name" placeholder="Your Name (Host)">
-                <input type="text" id="create-topic" placeholder="Meeting Name (e.g., Project Update)">
+                <input type="text" id="create-topic" placeholder="Meeting Name (e.g., Science Class)">
                 <button class="action-btn" onclick="generateLink()">Generate Link</button>
                 
                 <div id="generated-link-area">
@@ -98,16 +117,14 @@
             
             if(!name || !topic) return alert("Please enter Name and Meeting Topic!");
 
-            // Get new ID from server
+            // API Call
             const response = await fetch('/api/new-room');
             const data = await response.json();
             generatedRoomId = data.roomId;
             generatedTopic = topic;
 
-            // Build Link with Topic encoded
-            // Note: We don't put 'host=true' in the shareable link, only in the button below
+            // Show Link
             const shareableLink = window.location.origin + "/" + generatedRoomId + "?topic=" + encodeURIComponent(topic);
-            
             document.getElementById('link-text').innerText = shareableLink;
             document.getElementById('generated-link-area').style.display = 'block';
         }
@@ -120,24 +137,19 @@
 
         function enterAsHost() {
             const name = document.getElementById('create-name').value;
-            // Add host=true and topic
             window.location.href = `/${generatedRoomId}?name=${encodeURIComponent(name)}&host=true&topic=${encodeURIComponent(generatedTopic)}`;
         }
 
         function joinMeeting() {
             const name = document.getElementById('join-name').value;
             let link = document.getElementById('meeting-id').value;
-            if(!name || !link) return alert("Please fill in name and link!");
+            if(!name || !link) return alert("Please fill in all fields!");
             
-            // If they pasted a full URL, extract the parts
             if (link.includes("?")) {
-                // If link has query params (like topic), we preserve them
                 const urlObj = new URL(link);
-                // Add the user's name to the existing params
                 urlObj.searchParams.set('name', name);
                 window.location.href = urlObj.toString();
             } else {
-                // Raw ID entered
                 let roomId = link.split('/').pop(); 
                 window.location.href = `/${roomId}?name=${encodeURIComponent(name)}`;
             }
