@@ -2,13 +2,18 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Add this to the top of your CSS in home.ejs */
 body {
-    background-color: #000;
-    font-family: 'Roboto', sans-serif;
+    margin: 0; padding: 0;
+    background-color: #121212;
+    display: flex;             /* This centers the content */
+    justify-content: center;   /* This centers horizontally */
+    align-items: center;       /* This centers vertically */
     height: 100vh;
-    display: flex;
+    width: 100vw;
     overflow: hidden;
 }
+/* ... rest of your CSS ... */
 
 .main { display: flex; width: 100%; height: 100vh; }
 .main__left { flex: 0.8; display: flex; flex-direction: column; }

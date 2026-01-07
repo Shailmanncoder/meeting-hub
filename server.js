@@ -25,9 +25,23 @@ app.get('/', (req, res) => {
 });
 
 // 2. API: Generate New Room ID
-app.get('/api/new-room', (req, res) => {
-    res.json({ roomId: uuidV4() });
+// ... previous code ...
+
+// 4. Meeting Route (UPDATED NAME)
+app.get('/:room', (req, res) => {
+    try {
+        // We renamed the file to 'video.ejs' to fix the lookup error
+        res.render('video', { 
+            roomId: req.params.room,
+            meetingTopic: req.query.topic || "General Meeting"
+        });
+    } catch (e) {
+        console.error("RENDER ERROR:", e);
+        res.status(500).send("Error loading video page: " + e.message);
+    }
 });
+
+// ... rest of the code ...
 
 // 3. Meeting Room (The critical part)
 app.get('/:room', (req, res) => {
