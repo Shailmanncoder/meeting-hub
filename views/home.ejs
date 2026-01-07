@@ -3,48 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meeting Hub - Home</title>
+    <title>Meeting Hub</title>
     <link rel="stylesheet" href="style.css">
     <style>
         .home-container {
             display: flex; justify-content: center; align-items: center;
-            height: 100vh; flex-direction: column;
-            background: #121212; color: white;
+            height: 100vh; flex-direction: column; background: #121212; color: white;
         }
         .card {
-            background: #1E1E1E; padding: 40px; border-radius: 10px;
-            width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: #1E1E1E; padding: 30px; border-radius: 12px;
+            width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
             text-align: center; border: 1px solid #333;
         }
-        .btn-group { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .btn-group { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; }
         .tab-btn {
-            background: none; border: none; color: #888; font-size: 18px;
-            cursor: pointer; padding-bottom: 5px; width: 48%;
+            background: none; border: none; color: #888; font-size: 16px; font-weight: bold;
+            cursor: pointer; padding: 10px; width: 50%;
         }
-        .tab-btn.active { color: #00d2ff; border-bottom: 2px solid #00d2ff; }
+        .tab-btn.active { color: #00d2ff; border-bottom: 3px solid #00d2ff; }
+        
         input {
-            width: 100%; padding: 12px; margin: 10px 0; background: #2A2A2A;
-            border: 1px solid #444; color: white; border-radius: 5px;
+            width: 100%; padding: 12px; margin: 8px 0; background: #2A2A2A;
+            border: 1px solid #444; color: white; border-radius: 6px; outline: none;
         }
+        input:focus { border-color: #00d2ff; }
+        
         button.action-btn {
             width: 100%; padding: 12px; background: #00d2ff; color: #000;
             border: none; font-weight: bold; font-size: 16px;
-            border-radius: 5px; cursor: pointer; margin-top: 10px;
+            border-radius: 6px; cursor: pointer; margin-top: 15px;
         }
         button.action-btn:hover { background: #00b8e6; }
         .hidden { display: none; }
         
-        /* New Link Display Area */
+        /* Link Display Area */
         #generated-link-area {
-            margin-top: 15px; padding: 10px; background: #2A2A2A;
-            border: 1px dashed #555; display: none;
+            margin-top: 20px; padding: 15px; background: #181818;
+            border: 1px dashed #555; display: none; border-radius: 6px;
         }
         #link-text {
             word-break: break-all; font-family: monospace; color: #00d2ff;
             margin-bottom: 10px; font-size: 0.9rem;
         }
         .copy-btn {
-            background: #444; color: white; border: none; padding: 5px 10px;
+            background: #444; color: white; border: none; padding: 5px 15px;
             border-radius: 4px; cursor: pointer; font-size: 0.8rem;
         }
     </style>
@@ -60,19 +62,20 @@
 
             <div id="create-section">
                 <input type="text" id="create-name" placeholder="Your Name (Host)">
+                <input type="text" id="create-topic" placeholder="Meeting Name (e.g., Project Update)">
                 <button class="action-btn" onclick="generateLink()">Generate Link</button>
                 
                 <div id="generated-link-area">
-                    <p style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">Send this link to others:</p>
+                    <p style="font-size:0.8rem; color:#aaa; margin-bottom:5px;">Share this link:</p>
                     <div id="link-text">...</div>
-                    <button class="copy-btn" onclick="copyLink()">Copy</button>
-                    <button class="action-btn" style="background:#27AE60; color:white; margin-top:10px;" onclick="enterAsHost()">Join Now</button>
+                    <button class="copy-btn" onclick="copyLink()">Copy Link</button>
+                    <button class="action-btn" style="background:#27AE60; color:white;" onclick="enterAsHost()">Start Meeting</button>
                 </div>
             </div>
 
             <div id="join-section" class="hidden">
                 <input type="text" id="join-name" placeholder="Your Name">
-                <input type="text" id="meeting-id" placeholder="Paste Link Here">
+                <input type="text" id="meeting-id" placeholder="Paste Meeting Link Here">
                 <button class="action-btn" onclick="joinMeeting()">Join Meeting</button>
             </div>
         </div>
@@ -80,33 +83,32 @@
 
     <script>
         let generatedRoomId = "";
+        let generatedTopic = "";
 
         function switchTab(tab) {
-            if(tab === 'create') {
-                document.getElementById('create-section').classList.remove('hidden');
-                document.getElementById('join-section').classList.add('hidden');
-                document.querySelectorAll('.tab-btn')[0].classList.add('active');
-                document.querySelectorAll('.tab-btn')[1].classList.remove('active');
-            } else {
-                document.getElementById('create-section').classList.add('hidden');
-                document.getElementById('join-section').classList.remove('hidden');
-                document.querySelectorAll('.tab-btn')[0].classList.remove('active');
-                document.querySelectorAll('.tab-btn')[1].classList.add('active');
-            }
+            document.getElementById('create-section').classList.toggle('hidden', tab !== 'create');
+            document.getElementById('join-section').classList.toggle('hidden', tab !== 'join');
+            document.querySelectorAll('.tab-btn')[0].classList.toggle('active', tab === 'create');
+            document.querySelectorAll('.tab-btn')[1].classList.toggle('active', tab === 'join');
         }
 
         async function generateLink() {
             const name = document.getElementById('create-name').value;
-            if(!name) return alert("Please enter your name first!");
+            const topic = document.getElementById('create-topic').value;
+            
+            if(!name || !topic) return alert("Please enter Name and Meeting Topic!");
 
-            // 1. Ask Server for a new ID
+            // Get new ID from server
             const response = await fetch('/api/new-room');
             const data = await response.json();
             generatedRoomId = data.roomId;
+            generatedTopic = topic;
 
-            // 2. Show the link on screen
-            const fullLink = window.location.origin + "/" + generatedRoomId;
-            document.getElementById('link-text').innerText = fullLink;
+            // Build Link with Topic encoded
+            // Note: We don't put 'host=true' in the shareable link, only in the button below
+            const shareableLink = window.location.origin + "/" + generatedRoomId + "?topic=" + encodeURIComponent(topic);
+            
+            document.getElementById('link-text').innerText = shareableLink;
             document.getElementById('generated-link-area').style.display = 'block';
         }
 
@@ -118,8 +120,8 @@
 
         function enterAsHost() {
             const name = document.getElementById('create-name').value;
-            // Go to room with host=true flag
-            window.location.href = `/${generatedRoomId}?name=${encodeURIComponent(name)}&host=true`;
+            // Add host=true and topic
+            window.location.href = `/${generatedRoomId}?name=${encodeURIComponent(name)}&host=true&topic=${encodeURIComponent(generatedTopic)}`;
         }
 
         function joinMeeting() {
@@ -127,15 +129,18 @@
             let link = document.getElementById('meeting-id').value;
             if(!name || !link) return alert("Please fill in name and link!");
             
-            // Clean the link to just get ID (removes 'http://site.com/')
-            // If they paste full URL, we split it. If just ID, we use it.
-            let roomId = link;
-            if (link.includes("/")) {
-                roomId = link.split('/').pop(); // Gets the last part of URL
+            // If they pasted a full URL, extract the parts
+            if (link.includes("?")) {
+                // If link has query params (like topic), we preserve them
+                const urlObj = new URL(link);
+                // Add the user's name to the existing params
+                urlObj.searchParams.set('name', name);
+                window.location.href = urlObj.toString();
+            } else {
+                // Raw ID entered
+                let roomId = link.split('/').pop(); 
+                window.location.href = `/${roomId}?name=${encodeURIComponent(name)}`;
             }
-            
-            // Go to room (Guest mode)
-            window.location.href = `/${roomId}?name=${encodeURIComponent(name)}`;
         }
     </script>
 </body>
