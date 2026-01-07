@@ -3,7 +3,6 @@ const videoGrid = document.getElementById('video-grid');
 const myPeer = new Peer(undefined); 
 const myVideo = document.createElement('video');
 myVideo.muted = true;
-const peers = {};
 
 const urlParams = new URLSearchParams(window.location.search);
 const userName = urlParams.get('name') || "User";
@@ -14,33 +13,36 @@ let myVideoStream;
 let pendingSocketId = null;
 let pendingPeerId = null;
 
-// 1. Setup Connection
+// 1. Setup
 myPeer.on('open', id => {
     myPeerId = id;
     socket.emit('join-room-init', ROOM_ID, userName, isHost, id);
 });
 
-// 2. Video Handling
+// 2. Video Stream Handling
 function startVideo() {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
         myVideoStream = stream;
         // Add MY video card
-        addVideoStream(myVideo, stream, myPeerId, userName, true);
+        addVideoStream(myVideo, stream, myPeerId, userName + " (You)", true);
         
-        // Handle Calls
+        // Answer Incoming Calls
         myPeer.on('call', call => {
             call.answer(stream);
             const video = document.createElement('video');
             call.on('stream', userVideoStream => {
-                // In a real app, we'd sync names via data connection. Using 'Guest' for now.
                 addVideoStream(video, userVideoStream, call.peer, "Guest", false);
             });
         });
 
+        // Listen for new users
         socket.on('user-connected', (peerId, uName) => {
             connectToNewUser(peerId, stream, uName);
         });
+
+        // Chat Logic
+        setupChat();
 
     }).catch(err => {
         console.log("Failed to get stream", err);
@@ -57,61 +59,81 @@ function connectToNewUser(userId, stream, uName) {
         const card = document.getElementById(`card-${userId}`);
         if(card) card.remove();
     });
-    peers[userId] = call;
 }
 
-// 3. CREATE VIDEO CARD (New UI Logic)
+// 3. UI Builder: Create Video Card
 function addVideoStream(video, stream, peerId, uName, isMine) {
-    if(document.getElementById(`card-${peerId}`)) return; // Prevent duplicates
+    if(document.getElementById(`card-${peerId}`)) return; 
 
     const card = document.createElement('div');
     card.className = isMine ? 'video-card my-video' : 'video-card';
     card.id = `card-${peerId}`;
 
-    // Create Avatar
+    // Avatar
     const avatar = document.createElement('div');
     avatar.className = 'user-avatar';
     avatar.innerHTML = '<i class="fas fa-user"></i>';
 
-    // Create Name Tag
+    // WhatsApp Style Name Tag
     const nameTag = document.createElement('div');
     nameTag.className = 'name-tag';
-    nameTag.innerText = isMine ? "You" : uName;
+    nameTag.innerHTML = `<span style="height:8px; width:8px; background:#27AE60; border-radius:50%; display:inline-block;"></span> ${uName}`;
 
     video.srcObject = stream;
     video.addEventListener('loadedmetadata', () => { video.play(); });
 
-    // Assemble Card
     card.append(avatar);
     card.append(video);
     card.append(nameTag);
-
     videoGrid.append(card);
 }
 
-// 4. Handle Camera Toggle (Local & Remote)
+// 4. Mute / Unmute Logic
+window.muteUnmute = () => {
+    const enabled = myVideoStream.getAudioTracks()[0].enabled;
+    if (enabled) {
+        myVideoStream.getAudioTracks()[0].enabled = false;
+        setButtonState('.main__mute_button', false, 'microphone');
+    } else {
+        myVideoStream.getAudioTracks()[0].enabled = true;
+        setButtonState('.main__mute_button', true, 'microphone');
+    }
+}
+
+// 5. Video On / Off Logic
 window.playStop = () => {
     let enabled = myVideoStream.getVideoTracks()[0].enabled;
     if (enabled) {
-        // Turn Off
         myVideoStream.getVideoTracks()[0].enabled = false;
-        setStopVideo();
-        // Update Local Card
+        setButtonState('.main__video_button', false, 'video');
+        
+        // Update Local UI
         const card = document.getElementById(`card-${myPeerId}`);
         if(card) card.classList.add('video-off');
-        // Tell Others
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'video', status: false });
     } else {
-        // Turn On
         myVideoStream.getVideoTracks()[0].enabled = true;
-        setPlayVideo();
+        setButtonState('.main__video_button', true, 'video');
+        
         const card = document.getElementById(`card-${myPeerId}`);
         if(card) card.classList.remove('video-off');
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'video', status: true });
     }
 }
 
-// Listen for remote toggles
+// Helper: Change Button Icon & Color
+function setButtonState(buttonClass, isActive, iconName) {
+    const button = document.querySelector(buttonClass);
+    if (isActive) {
+        button.innerHTML = `<i class="fas fa-${iconName}"></i>`;
+        button.classList.remove('button-red');
+    } else {
+        button.innerHTML = `<i class="fas fa-${iconName}-slash"></i>`;
+        button.classList.add('button-red');
+    }
+}
+
+// 6. Listen for Remote Media Toggles
 socket.on('update-media-status', ({ peerId, type, status }) => {
     if (type === 'video') {
         const card = document.getElementById(`card-${peerId}`);
@@ -122,21 +144,23 @@ socket.on('update-media-status', ({ peerId, type, status }) => {
     }
 });
 
-// --- HELPER FUNCTIONS ---
-window.muteUnmute = () => {
-    const enabled = myVideoStream.getAudioTracks()[0].enabled;
-    if(enabled) {
-        myVideoStream.getAudioTracks()[0].enabled = false;
-        setUnmuteButton();
-    } else {
-        myVideoStream.getAudioTracks()[0].enabled = true;
-        setMuteButton();
-    }
-}
-
-window.raiseHand = () => {
-    socket.emit('message', "✋ RAISED HAND");
-    alert("You raised your hand!");
+// 7. Chat & Features
+function setupChat() {
+    let text = document.querySelector("#chat_message");
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && text.value.length !== 0) {
+            socket.emit("message", text.value);
+            text.value = "";
+        }
+    });
+    socket.on("createMessage", (message) => {
+        const ul = document.querySelector(".messages");
+        const li = document.createElement("li");
+        li.innerHTML = `<span style="color:#00d2ff; font-weight:bold;">User:</span> ${message}`;
+        ul.append(li);
+        let d = document.querySelector('.main__chat_window');
+        d.scrollTop = d.scrollHeight;
+    });
 }
 
 window.toggleChat = () => {
@@ -151,18 +175,41 @@ window.toggleChat = () => {
     }
 }
 
-// Button Stylers
-const setMuteButton = () => { document.querySelector('.main__mute_button').innerHTML = `<i class="fas fa-microphone"></i>`; }
-const setUnmuteButton = () => { document.querySelector('.main__mute_button').innerHTML = `<i class="fas fa-microphone-slash" style="color:#EB534B;"></i>`; }
-const setStopVideo = () => { document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video-slash" style="color:#EB534B;"></i>`; }
-const setPlayVideo = () => { document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video"></i>`; }
+window.raiseHand = () => {
+    socket.emit('message', "✋ RAISED HAND");
+    alert("You raised your hand!");
+}
 
-// Timer
+window.shareScreen = () => {
+    navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false })
+    .then((screenStream) => {
+        let videoTrack = screenStream.getVideoTracks()[0];
+        videoTrack.onended = function() { 
+            // Revert to camera
+            let camTrack = myVideoStream.getVideoTracks()[0];
+            let sender = myPeer.connections[Object.keys(myPeer.connections)[0]][0].peerConnection.getSenders().find(s => s.track.kind == camTrack.kind);
+            sender.replaceTrack(camTrack);
+            const card = document.getElementById(`card-${myPeerId}`);
+            card.querySelector('video').srcObject = myVideoStream;
+        };
+        
+        let sender = myPeer.connections[Object.keys(myPeer.connections)[0]][0].peerConnection.getSenders().find(s => s.track.kind == videoTrack.kind);
+        sender.replaceTrack(videoTrack);
+        
+        // Show screen on local view
+        const card = document.getElementById(`card-${myPeerId}`);
+        card.querySelector('video').srcObject = screenStream;
+    });
+}
+
+// 8. Meeting Logic (Entry & Timer)
 socket.on('entry-granted', () => {
     document.getElementById('waiting-screen').style.display = 'none';
     document.getElementById('main-interface').classList.remove('hidden');
     document.getElementById('main-interface').style.display = 'flex';
     startVideo();
+    
+    // Start Timer
     setInterval(() => {
         let timer = document.getElementById('meeting-timer');
         let time = timer.innerText.split(':');

@@ -6,40 +6,46 @@ const { v4: uuidV4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 
-// 1. Setup
+// --- CONFIGURATION ---
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 2. Home Page
+// --- ROUTES ---
+
+// 1. Home Page
 app.get('/', (req, res) => {
     res.render('home');
 });
 
-// 3. API: Generate Link
+// 2. API: Generate New Room ID
 app.get('/api/new-room', (req, res) => {
     res.json({ roomId: uuidV4() });
 });
 
-// 4. Video Room (Looking for 'video.ejs')
+// 3. Video Room
 app.get('/:room', (req, res) => {
     try {
+        // We look for 'video.ejs'
         res.render('video', { 
             roomId: req.params.room,
-            meetingTopic: req.query.topic || "General Meeting"
+            meetingTopic: req.query.topic || "General Meeting" 
         });
     } catch (e) {
-        console.error("RENDER ERROR:", e);
-        res.status(500).send("Critical Error: " + e.message);
+        console.error("Render Error:", e.message);
+        res.status(500).send("Error loading meeting: " + e.message);
     }
 });
 
-// 5. Socket Logic
+// --- SOCKET LOGIC ---
 const roomHosts = {};
 
 io.on('connection', socket => {
+    
+    // A. User Joins
     socket.on('join-room-init', (roomId, name, isHost, peerId) => {
         socket.join(roomId);
+        
         if (isHost === 'true') {
             roomHosts[roomId] = socket.id;
             socket.emit('entry-granted'); 
@@ -47,15 +53,17 @@ io.on('connection', socket => {
         } else {
             const hostSocket = roomHosts[roomId];
             if (hostSocket) {
+                // Ask Host for approval
                 io.to(hostSocket).emit('request-entry', { socketId: socket.id, name, peerId });
             } else {
-                // Auto-admit if no host present (for testing)
+                // Auto-admit if no host (fallback)
                 socket.emit('entry-granted'); 
                 socket.to(roomId).emit('user-connected', peerId, name);
             }
         }
     });
 
+    // B. Host Responds
     socket.on('respond-entry', ({ socketId, peerId, action }) => {
         if (action === 'allow') {
             io.to(socketId).emit('entry-granted');
@@ -65,15 +73,20 @@ io.on('connection', socket => {
         }
     });
 
-    // NEW: Handle Camera/Mic Status
+    // C. Media Toggles (Camera/Mic)
     socket.on('toggle-media', (data) => {
-        // Tell everyone else to update this user's card
+        // Broadcast change to everyone in the room
         socket.to(data.roomId).emit('update-media-status', data); 
     });
 
+    // D. Chat Messages
     socket.on('message', (message) => {
         const room = Array.from(socket.rooms).find(r => r !== socket.id);
         if (room) io.to(room).emit('createMessage', message);
+    });
+
+    socket.on('disconnect', () => {
+        // Cleanup logic if needed
     });
 });
 
