@@ -2,7 +2,7 @@ const socket = io('/');
 const videoGrid = document.getElementById('video-grid');
 const myPeer = new Peer(undefined); 
 const myVideo = document.createElement('video');
-myVideo.muted = true;
+myVideo.muted = true; // Mute local video
 
 const urlParams = new URLSearchParams(window.location.search);
 const userName = urlParams.get('name') || "User";
@@ -11,14 +11,39 @@ const isHost = urlParams.get('host');
 let myPeerId = null;
 let myVideoStream;
 let isScreenSharing = false;
+let pendingSocketId = null;
+let pendingPeerId = null;
 
-// 1. Setup
+// 1. SETUP & HOST CHECK
 myPeer.on('open', id => {
     myPeerId = id;
     socket.emit('join-room-init', ROOM_ID, userName, isHost, id);
 });
 
-// 2. Video Stream Handling
+// Server Responses
+socket.on('entry-granted', () => {
+    document.getElementById('waiting-screen').style.display = 'none';
+    document.getElementById('main-interface').classList.remove('hidden');
+    document.getElementById('main-interface').style.display = 'flex';
+    startVideo();
+    startTimer();
+});
+
+socket.on('entry-denied', () => {
+    document.querySelector('#waiting-screen h2').innerText = "Access Denied";
+    document.querySelector('#waiting-screen p').innerText = "Host declined your request.";
+    document.querySelector('.spinner').style.display = 'none';
+});
+
+socket.on('request-entry', (data) => {
+    pendingSocketId = data.socketId;
+    pendingPeerId = data.peerId;
+    document.getElementById('guest-name').innerText = data.name;
+    document.getElementById('admit-modal').classList.remove('hidden');
+    document.getElementById('admit-modal').style.display = 'flex';
+});
+
+// 2. VIDEO LOGIC
 function startVideo() {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
@@ -38,7 +63,7 @@ function startVideo() {
         });
         
         setupChat();
-    }).catch(err => { console.log("Failed to get stream", err); });
+    }).catch(err => { console.error("Media Error", err); });
 }
 
 function connectToNewUser(userId, stream, uName) {
@@ -77,34 +102,29 @@ function addVideoStream(video, stream, peerId, uName, isMine) {
     videoGrid.append(card);
 }
 
-// 3. ZOOM STYLE SCREEN SHARE
+// 3. SCREEN SHARE (ZOOM MODE)
 window.shareScreen = () => {
-    if (isScreenSharing) {
-        stopScreenShare();
-        return;
-    }
+    if (isScreenSharing) { stopScreenShare(); return; }
 
     navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: true })
     .then((screenStream) => {
         isScreenSharing = true;
-        const shareBtn = document.querySelector('.share-btn');
-        shareBtn.classList.add('share-active-btn'); // Green button
+        document.querySelector('.share-btn').classList.add('share-active-btn');
 
-        // 1. Replace my Video Track with Screen Track
+        // A. Get the Screen Track
         let videoTrack = screenStream.getVideoTracks()[0];
-        
-        // Handle "Stop Sharing" from the browser popup
         videoTrack.onended = function() { stopScreenShare(); };
 
-        let sender = myPeer.connections[Object.keys(myPeer.connections)[0]]?.[0].peerConnection.getSenders().find(s => s.track.kind === "video");
-        
-        // Replace track for remote peers
-        if(sender) sender.replaceTrack(videoTrack);
+        // B. Replace Track for ALL Peers (Crucial Fix)
+        for (let peerId in myPeer.connections) {
+            let sender = myPeer.connections[peerId][0].peerConnection.getSenders().find(s => s.track.kind === "video");
+            if(sender) sender.replaceTrack(videoTrack);
+        }
 
-        // 2. Update Layout LOCALLY
-        activateZoomLayout(myVideo, screenStream, true);
+        // C. Update Local View
+        activateZoomLayout(screenStream, true);
 
-        // 3. Tell everyone "I am sharing screen"
+        // D. Tell Everyone
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'screen-start' });
 
     }).catch(err => { console.log("Screen share cancelled", err); });
@@ -112,45 +132,42 @@ window.shareScreen = () => {
 
 function stopScreenShare() {
     isScreenSharing = false;
-    const shareBtn = document.querySelector('.share-btn');
-    shareBtn.classList.remove('share-active-btn');
+    document.querySelector('.share-btn').classList.remove('share-active-btn');
 
-    // Revert to Camera
+    // Restore Camera
     let camTrack = myVideoStream.getVideoTracks()[0];
-    let sender = myPeer.connections[Object.keys(myPeer.connections)[0]]?.[0].peerConnection.getSenders().find(s => s.track.kind === "video");
-    if(sender) sender.replaceTrack(camTrack);
+    for (let peerId in myPeer.connections) {
+        let sender = myPeer.connections[peerId][0].peerConnection.getSenders().find(s => s.track.kind === "video");
+        if(sender) sender.replaceTrack(camTrack);
+    }
 
-    // Revert Layout
     deactivateZoomLayout();
-    
-    // Tell everyone
     socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'screen-stop' });
 }
 
-// 4. HANDLE LAYOUT CHANGES
-function activateZoomLayout(videoElement, stream, isMine) {
-    // A. Add class to main container (Moves grid to top)
+// 4. LAYOUT MANAGERS
+function activateZoomLayout(stream, isMine) {
+    // Add class to squeeze top bar
     document.querySelector('.main__left').classList.add('screen-share-active');
-
-    // B. Show Stage
-    const stage = document.getElementById('screen-stage');
-    stage.innerHTML = ''; // Clear old
     
-    // C. Create Big Video
+    // Setup Stage
+    const stage = document.getElementById('screen-stage');
+    stage.innerHTML = '';
+    
     const stageVideo = document.createElement('video');
     stageVideo.srcObject = stream;
     stageVideo.autoplay = true;
-    if(isMine) stageVideo.muted = true; // Don't hear myself
+    if(isMine) stageVideo.muted = true; // Don't hear self
     
     stage.append(stageVideo);
 }
 
 function deactivateZoomLayout() {
     document.querySelector('.main__left').classList.remove('screen-share-active');
-    document.getElementById('screen-stage').innerHTML = ''; // Clear stage
+    document.getElementById('screen-stage').innerHTML = '';
 }
 
-// 5. LISTEN FOR OTHERS SHARING
+// 5. EVENT LISTENERS (Remote Changes)
 socket.on('update-media-status', ({ peerId, type, status }) => {
     if (type === 'video') {
         const card = document.getElementById(`card-${peerId}`);
@@ -158,11 +175,11 @@ socket.on('update-media-status', ({ peerId, type, status }) => {
     }
     
     if (type === 'screen-start') {
-        // Someone else started sharing. Find their video element.
+        // Find the sharer's video card and clone stream to big stage
         const card = document.getElementById(`card-${peerId}`);
         if(card) {
             const videoEl = card.querySelector('video');
-            activateZoomLayout(videoEl, videoEl.srcObject, false);
+            activateZoomLayout(videoEl.srcObject, false);
         }
     }
     
@@ -171,7 +188,7 @@ socket.on('update-media-status', ({ peerId, type, status }) => {
     }
 });
 
-// ... (Rest of Mute/Video/Chat logic remains same) ...
+// 6. CONTROLS (Mute/Video/Host)
 window.muteUnmute = () => {
     const enabled = myVideoStream.getAudioTracks()[0].enabled;
     if (enabled) {
@@ -188,17 +205,20 @@ window.playStop = () => {
     if (enabled) {
         myVideoStream.getVideoTracks()[0].enabled = false;
         setButtonState('.main__video_button', false, 'video');
-        const card = document.getElementById(`card-${myPeerId}`);
-        if(card) card.classList.add('video-off');
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'video', status: false });
+        document.getElementById(`card-${myPeerId}`).classList.add('video-off');
     } else {
         myVideoStream.getVideoTracks()[0].enabled = true;
         setButtonState('.main__video_button', true, 'video');
-        const card = document.getElementById(`card-${myPeerId}`);
-        if(card) card.classList.remove('video-off');
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'video', status: true });
+        document.getElementById(`card-${myPeerId}`).classList.remove('video-off');
     }
 }
+
+window.respondToUser = (action) => {
+    socket.emit('respond-entry', { socketId: pendingSocketId, peerId: pendingPeerId, action });
+    document.getElementById('admit-modal').style.display = 'none';
+};
 
 function setButtonState(btn, active, icon) {
     const b = document.querySelector(btn);
@@ -206,12 +226,12 @@ function setButtonState(btn, active, icon) {
     else { b.innerHTML=`<i class="fas fa-${icon}-slash"></i>`; b.classList.add('button-red'); }
 }
 
+// 7. EXTRAS
 function setupChat() {
     let text = document.querySelector("#chat_message");
     document.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && text.value.length !== 0) {
-            socket.emit("message", text.value);
-            text.value = "";
+            socket.emit("message", text.value); text.value = "";
         }
     });
     socket.on("createMessage", (message) => {
@@ -219,8 +239,7 @@ function setupChat() {
         const li = document.createElement("li");
         li.innerHTML = `<span style="color:#00d2ff; font-weight:bold;">User:</span> ${message}`;
         ul.append(li);
-        let d = document.querySelector('.main__chat_window');
-        d.scrollTop = d.scrollHeight;
+        let d = document.querySelector('.main__chat_window'); d.scrollTop = d.scrollHeight;
     });
 }
 window.toggleChat = () => {
@@ -230,16 +249,12 @@ window.toggleChat = () => {
     else { chat.style.display = "none"; mainLeft.style.flex = "1"; }
 }
 window.raiseHand = () => { socket.emit('message', "✋ RAISED HAND"); alert("You raised your hand!"); }
-socket.on('entry-granted', () => {
-    document.getElementById('waiting-screen').style.display = 'none';
-    document.getElementById('main-interface').classList.remove('hidden');
-    document.getElementById('main-interface').style.display = 'flex';
-    startVideo();
+function startTimer() {
     setInterval(() => {
-        let timer = document.getElementById('meeting-timer');
-        let t = timer.innerText.split(':');
-        let m = parseInt(t[0]), s = parseInt(t[1]);
-        s++; if(s>=60){s=0;m++;}
-        timer.innerText=(m<10?"0"+m:m)+":"+(s<10?"0"+s:s);
+        let t = document.getElementById('meeting-timer');
+        let s = t.innerText.split(':');
+        let m = parseInt(s[0]), sc = parseInt(s[1]);
+        sc++; if(sc>=60){sc=0;m++;}
+        t.innerText=(m<10?"0"+m:m)+":"+(sc<10?"0"+sc:sc);
     }, 1000);
-});
+}

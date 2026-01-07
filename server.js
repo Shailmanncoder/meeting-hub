@@ -4,93 +4,97 @@ const server = require('http').Server(app);
 const io = require('socket.io')(server);
 const { v4: uuidV4 } = require('uuid');
 const path = require('path');
-const fs = require('fs');
 
-// --- CONFIGURATION ---
+// CONFIG
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ROUTES ---
-
-// 1. Home Page
+// ROUTES
 app.get('/', (req, res) => {
     res.render('home');
 });
 
-// 2. API: Generate New Room ID
 app.get('/api/new-room', (req, res) => {
     res.json({ roomId: uuidV4() });
 });
 
-// 3. Video Room
 app.get('/:room', (req, res) => {
     try {
-        // We look for 'video.ejs'
         res.render('video', { 
             roomId: req.params.room,
             meetingTopic: req.query.topic || "General Meeting" 
         });
     } catch (e) {
-        console.error("Render Error:", e.message);
-        res.status(500).send("Error loading meeting: " + e.message);
+        res.status(500).send("Error: " + e.message);
     }
 });
 
-// --- SOCKET LOGIC ---
-const roomHosts = {};
+// --- HOST CONTROL LOGIC ---
+const roomHosts = {}; // Store: { roomId: socketId }
 
 io.on('connection', socket => {
     
-    // A. User Joins
+    // 1. User Joins Room
     socket.on('join-room-init', (roomId, name, isHost, peerId) => {
         socket.join(roomId);
         
         if (isHost === 'true') {
+            // REGISTER HOST
             roomHosts[roomId] = socket.id;
+            console.log(`Host registered for room ${roomId}: ${name}`);
+            
+            // Host enters immediately
             socket.emit('entry-granted'); 
             socket.to(roomId).emit('user-connected', peerId, name);
         } else {
+            // GUEST JOINING
             const hostSocket = roomHosts[roomId];
+            
             if (hostSocket) {
-                // Ask Host for approval
-                io.to(hostSocket).emit('request-entry', { socketId: socket.id, name, peerId });
+                // Host is online -> Ask for permission
+                console.log(`Guest ${name} asking permission from Host ${hostSocket}`);
+                io.to(hostSocket).emit('request-entry', { 
+                    socketId: socket.id, 
+                    name: name, 
+                    peerId: peerId 
+                });
             } else {
-                // Auto-admit if no host (fallback)
-                socket.emit('entry-granted'); 
-                socket.to(roomId).emit('user-connected', peerId, name);
+                // Host is offline -> Tell guest to wait
+                // (Optional: You could auto-admit here if you prefer)
+                socket.emit('host-offline'); 
             }
         }
     });
 
-    // B. Host Responds
+    // 2. Host Responds (Allow/Deny)
     socket.on('respond-entry', ({ socketId, peerId, action }) => {
         if (action === 'allow') {
-            io.to(socketId).emit('entry-granted');
-            socket.emit('user-connected', peerId, "Guest"); 
+            io.to(socketId).emit('entry-granted'); // Tell guest to enter
+            socket.emit('user-connected', peerId, "Guest"); // Tell host to connect video
         } else {
             io.to(socketId).emit('entry-denied');
         }
     });
 
-    // C. Media Toggles (Camera/Mic)
+    // 3. Media Toggles (Sync icons/avatars)
     socket.on('toggle-media', (data) => {
-        // Broadcast change to everyone in the room
         socket.to(data.roomId).emit('update-media-status', data); 
     });
 
-    // D. Chat Messages
+    // 4. Chat
     socket.on('message', (message) => {
         const room = Array.from(socket.rooms).find(r => r !== socket.id);
         if (room) io.to(room).emit('createMessage', message);
     });
 
+    // 5. Cleanup
     socket.on('disconnect', () => {
-        // Cleanup logic if needed
+        // We don't delete the host immediately in case they just refreshed
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-});
+}); 
