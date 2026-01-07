@@ -9,7 +9,6 @@
     const MEETING_TOPIC = "<%= meetingTopic %>";
   </script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
   <script defer src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="/socket.io/socket.io.js" defer></script>
   <link rel="stylesheet" href="style.css">
@@ -20,7 +19,7 @@
   <div id="waiting-screen" class="overlay">
     <div class="loader-box">
         <h2>Please Wait</h2>
-        <p>Connecting to secure server...</p>
+        <p>Connecting...</p>
         <div class="spinner"></div>
     </div>
   </div>
@@ -43,8 +42,13 @@
     </div>
 
     <div class="main__left">
-      <div class="main__videos">
-        <div id="video-grid"></div>
+      <div class="main__videos" id="video-grid">
+        </div>
+
+      <div id="screen-stage" class="hidden">
+        <div class="stage-placeholder">
+            <p>Sharing Screen...</p>
+        </div>
       </div>
       
       <div class="control-bar-wrapper">
@@ -58,7 +62,7 @@
             <div onclick="raiseHand()" class="control-btn hand-btn" title="Raise Hand">
                 <i class="fas fa-hand-paper"></i>
             </div>
-            <div onclick="shareScreen()" class="control-btn" title="Share Screen">
+            <div onclick="shareScreen()" class="control-btn share-btn" title="Share Screen">
                 <i class="fas fa-desktop"></i>
             </div>
             <div onclick="toggleChat()" class="control-btn" title="Chat">
@@ -73,9 +77,7 @@
     
     <div class="main__right" id="chat-section">
       <div class="main__header"><h6>Live Chat</h6></div>
-      <div class="main__chat_window">
-        <ul class="messages"></ul>
-      </div>
+      <div class="main__chat_window"><ul class="messages"></ul></div>
       <div class="main__message_container">
         <input id="chat_message" type="text" placeholder="Type a message...">
       </div>
