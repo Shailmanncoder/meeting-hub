@@ -19,26 +19,27 @@ myPeer.on('open', id => {
     socket.emit('join-room-init', ROOM_ID, userName, isHost, id);
 });
 
-// --- TIMER LOGIC ---
+// TIMER LOGIC
 function startTimer() {
     let seconds = 0;
     const timerEl = document.getElementById('meeting-timer');
-    setInterval(() => {
-        seconds++;
-        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const secs = (seconds % 60).toString().padStart(2, '0');
-        timerEl.innerText = `${mins}:${secs}`;
-    }, 1000);
+    if(timerEl) {
+        setInterval(() => {
+            seconds++;
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            timerEl.innerText = `${mins}:${secs}`;
+        }, 1000);
+    }
 }
 
-// --- SERVER EVENTS ---
-
+// SERVER EVENTS
 socket.on('entry-granted', () => {
     document.getElementById('waiting-screen').style.display = 'none';
     document.getElementById('main-interface').classList.remove('hidden');
     document.getElementById('main-interface').style.display = 'flex';
     startVideo();
-    startTimer(); // Start the hi-tech timer
+    startTimer();
 });
 
 socket.on('entry-denied', () => {
@@ -55,69 +56,93 @@ socket.on('request-entry', (data) => {
     document.getElementById('admit-modal').style.display = 'flex';
 });
 
-// NEW: Raise Hand Listener
 socket.on('hand-raised', (peerId) => {
     alert("Someone raised their hand! 👋");
-    // (Optional: add visual border logic here if we tracked video elements by ID)
 });
 
-
-// --- VIDEO & FEATURES ---
-
+// VIDEO LOGIC
 function startVideo() {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
         myVideoStream = stream;
-        addVideoStream(myVideo, stream);
+        // Add MY video
+        addVideoStream(myVideo, stream, userName, true);
         
         myPeer.on('call', call => {
             call.answer(stream);
             const video = document.createElement('video');
+            
+            // We need to fetch the caller's name somehow. 
+            // For now, we use a generic name or wait for data.
+            // Simplified: User-connected event usually handles this, 
+            // but for incoming calls, we might not have the name instantly.
             call.on('stream', userVideoStream => {
-                addVideoStream(video, userVideoStream);
+                addVideoStream(video, userVideoStream, "Participant");
             });
         });
 
         socket.on('user-connected', (peerId, uName) => {
-            connectToNewUser(peerId, stream);
+            connectToNewUser(peerId, stream, uName);
         });
 
-        // Chat
-        let text = document.querySelector("#chat_message");
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && text.value.length !== 0) {
-                socket.emit("message", text.value);
-                text.value = "";
-            }
-        });
-
-        socket.on("createMessage", (message) => {
-            const ul = document.querySelector(".messages");
-            const li = document.createElement("li");
-            li.innerHTML = `<span style="color:#00d2ff; font-weight:bold;">User:</span> ${message}`;
-            ul.append(li);
-            scrollToBottom();
-        });
+        setupChat();
 
     }).catch(err => {
         console.log("Failed to get stream", err);
     });
 }
 
-function connectToNewUser(userId, stream) {
+function connectToNewUser(userId, stream, uName) {
     const call = myPeer.call(userId, stream);
     const video = document.createElement('video');
     call.on('stream', userVideoStream => {
-        addVideoStream(video, userVideoStream);
+        addVideoStream(video, userVideoStream, uName);
     });
-    call.on('close', () => { video.remove(); });
+    call.on('close', () => { 
+        video.parentElement.remove(); // Remove the whole card
+    });
     peers[userId] = call;
 }
 
-function addVideoStream(video, stream) {
+// --- NEW FUNCTION: ADDS VIDEO CARD WITH NAME & ICON ---
+function addVideoStream(video, stream, uName, isMine = false) {
+    // 1. Create the Card Container
+    const card = document.createElement('div');
+    card.className = 'video-card';
+
+    // 2. Setup the Video Element
     video.srcObject = stream;
     video.addEventListener('loadedmetadata', () => { video.play(); });
-    videoGrid.append(video);
+
+    // 3. Create the Name Tag
+    const nameTag = document.createElement('div');
+    nameTag.className = 'name-tag';
+    nameTag.innerText = uName || "User";
+
+    // 4. Create the Placeholder (Icon for when video is off)
+    const placeholder = document.createElement('div');
+    placeholder.className = 'video-placeholder';
+    placeholder.innerHTML = `
+        <i class="fas fa-user-circle"></i>
+        <span>${uName || "User"}</span>
+    `;
+
+    // 5. Detect when video turns OFF/ON (Track Mute Events)
+    // This allows the icon to show automatically when someone stops their video
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+        videoTrack.onmute = () => { card.classList.add('video-off'); };
+        videoTrack.onunmute = () => { card.classList.remove('video-off'); };
+        
+        // Initial check
+        if (!videoTrack.enabled) card.classList.add('video-off');
+    }
+
+    // 6. Assemble everything
+    card.append(placeholder);
+    card.append(video);
+    card.append(nameTag);
+    videoGrid.append(card);
 }
 
 function scrollToBottom() {
@@ -125,11 +150,28 @@ function scrollToBottom() {
   d.scrollTop = d.scrollHeight;
 }
 
+function setupChat() {
+    let text = document.querySelector("#chat_message");
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && text.value.length !== 0) {
+            socket.emit("message", text.value);
+            text.value = "";
+        }
+    });
+
+    socket.on("createMessage", (message) => {
+        const ul = document.querySelector(".messages");
+        const li = document.createElement("li");
+        li.innerHTML = `<span style="color:#00d2ff; font-weight:bold;">User:</span> ${message}`;
+        ul.append(li);
+        scrollToBottom();
+    });
+}
+
 // --- CONTROLS ---
 
 window.raiseHand = () => {
-    // Send signal to everyone
-    socket.emit('message', "✋ RAISED HAND"); // Simple version using chat
+    socket.emit('message', "✋ RAISED HAND");
     alert("You raised your hand!");
 }
 
@@ -153,14 +195,20 @@ window.muteUnmute = () => {
 
 window.playStop = () => {
   let enabled = myVideoStream.getVideoTracks()[0].enabled;
+  const card = myVideo.closest('.video-card'); // Find MY card
+
   if (enabled) {
+    // TURN OFF
     myVideoStream.getVideoTracks()[0].enabled = false;
     document.querySelector('.main__video_button').classList.add("stop");
     document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video-slash"></i>`;
+    if(card) card.classList.add('video-off'); // Manually trigger for self
   } else {
+    // TURN ON
     myVideoStream.getVideoTracks()[0].enabled = true;
     document.querySelector('.main__video_button').classList.remove("stop");
     document.querySelector('.main__video_button').innerHTML = `<i class="fas fa-video"></i>`;
+    if(card) card.classList.remove('video-off');
   }
 }
 
@@ -177,7 +225,7 @@ window.shareScreen = () => {
   });
 }
 
-function stopScreenShare() {
+window.stopScreenShare = () => {
     let videoTrack = myVideoStream.getVideoTracks()[0];
     let sender = myPeer.connections[Object.keys(myPeer.connections)[0]][0].peerConnection.getSenders().find(function(s) {
         return s.track.kind == videoTrack.kind;

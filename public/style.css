@@ -1,126 +1,75 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-    background-color: #0d0d0d; /* Ultra Dark */
-    font-family: 'Inter', sans-serif;
-    height: 100vh;
+/* --- NEW VIDEO GRID STYLES --- */
+#video-grid {
     display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    width: 100%;
+}
+
+/* The Wrapper for each user */
+.video-card {
+    position: relative;
+    width: 400px;
+    height: 300px;
+    background: #222;
+    border-radius: 12px;
     overflow: hidden;
+    border: 2px solid #333;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
 }
 
-.main { display: flex; width: 100%; height: 100vh; position: relative; }
-.main__left { flex: 1; display: flex; flex-direction: column; position: relative; }
-.main__right { 
-    flex: 0.25; 
-    display: flex; 
-    flex-direction: column; 
-    background-color: #1a1a1a; 
-    border-left: 1px solid #333; 
-    transition: all 0.3s ease;
+/* The actual video element */
+.video-card video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
 }
 
-/* SMART VIDEO GRID */
-.main__videos {
-    flex-grow: 1;
-    background-color: #0d0d0d;
-    display: flex;
+/* The Name Tag (Transparent & White Text) */
+.name-tag {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    z-index: 5;
+    pointer-events: none;
+}
+
+/* The "Camera Off" Placeholder (Icon) */
+.video-placeholder {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: #1a1a1a;
+    display: none; /* Hidden by default */
     justify-content: center;
     align-items: center;
-    flex-wrap: wrap;
-    padding: 20px;
-    gap: 15px;
-    overflow-y: auto;
+    flex-direction: column;
+    z-index: 2;
 }
 
-video {
-    height: 300px; 
-    max-width: 500px;
-    width: 100%;
-    object-fit: cover;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    border: 2px solid transparent;
-    transition: transform 0.2s;
+.video-placeholder i {
+    font-size: 80px;
+    color: #555;
+    margin-bottom: 10px;
 }
 
-/* HAND RAISE HIGHLIGHT */
-video.hand-raised {
-    border-color: #f1c40f;
-    box-shadow: 0 0 20px rgba(241, 196, 15, 0.4);
+.video-placeholder span {
+    color: #777;
+    font-size: 1.2rem;
 }
 
-/* FLOATING INFO BADGE */
-.info-badge {
-    position: absolute;
-    top: 20px; left: 20px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    padding: 8px 16px;
-    border-radius: 20px;
-    color: white;
-    z-index: 10;
-    font-size: 0.9rem;
-    border: 1px solid rgba(255,255,255,0.1);
-    display: flex; gap: 10px;
-}
-.timer-text { font-weight: bold; color: #00d2ff; border-left: 1px solid #555; padding-left: 10px; }
-
-/* GLASSMORPHISM CONTROL BAR */
-.control-bar-wrapper {
-    position: absolute;
-    bottom: 30px;
-    width: 100%;
+/* When the video is hidden (muted), show the placeholder */
+.video-card.video-off .video-placeholder {
     display: flex;
-    justify-content: center;
-    pointer-events: none; /* Let clicks pass through empty space */
 }
-
-.glass-controls {
-    pointer-events: auto;
-    background: rgba(30, 30, 30, 0.6);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    padding: 12px 30px;
-    border-radius: 50px;
-    display: flex;
-    gap: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+.video-card.video-off video {
+    opacity: 0;
 }
-
-.control-btn {
-    width: 50px; height: 50px;
-    border-radius: 50%;
-    background: #333;
-    display: flex; align-items: center; justify-content: center;
-    color: white;
-    font-size: 20px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.control-btn:hover { background: #444; transform: translateY(-3px); }
-.control-btn.leave-btn { background: #EB534B; }
-.control-btn.leave-btn:hover { background: #c0392b; }
-
-.unmute, .stop { background: #EB534B !important; } 
-
-/* CHAT */
-.main__header { padding: 15px; color: #fff; text-align: center; background: #1a1a1a; border-bottom: 1px solid #333; font-weight: bold; }
-.main__chat_window { flex-grow: 1; overflow-y: auto; padding: 20px; }
-.messages { list-style: none; color: #ddd; font-size: 0.9rem; }
-.messages li { margin-bottom: 12px; }
-.main__message_container { padding: 15px; display: flex; background: #1a1a1a; }
-.main__message_container input {
-    flex-grow: 1; background-color: #2a2a2a; border: none;
-    color: #fff; padding: 12px; border-radius: 20px; outline: none;
-}
-
-/* UTILS */
-.hidden { display: none !important; }
-.overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; display: flex; justify-content: center; align-items: center; z-index: 100; }
-.modal { position: fixed; top: 20px; right: 20px; background: #1a1a1a; padding: 20px; border-radius: 12px; z-index: 200; box-shadow: 0 5px 20px rgba(0,0,0,0.6); border: 1px solid #333; }
-.modal-actions button { margin-top: 10px; padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; }
-.allow-btn { background: #27AE60; } .deny-btn { background: #555; margin-right: 10px; }
