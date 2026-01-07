@@ -3,24 +3,30 @@ const app = express();
 const server = require('http').Server(app);
 const io = require('socket.io')(server);
 const { v4: uuidV4 } = require('uuid');
-const path = require('path'); // IMPORTANT: Imports the path tool
+const path = require('path');
 
-// --- THE FIX IS HERE ---
-// 1. Force Express to look in the exact 'views' folder using absolute paths
-app.set('views', path.join(__dirname, 'views'));
+// 1. Strict Path Setting
 app.set('view engine', 'ejs');
-
-// 2. Force Express to look in the exact 'public' folder
+app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
-// -----------------------
+
+// DEBUGGING: Print all files the server can see
+console.log("--- FILE CHECK ---");
+try {
+  console.log("Files in root:", fs.readdirSync(__dirname));
+  console.log("Files in views:", fs.readdirSync(path.join(__dirname, 'views')));
+} catch (error) {
+  console.log("Error reading files:", error.message);
+}
+console.log("------------------");
 
 app.get('/', (req, res) => {
   res.redirect(`/${uuidV4()}`);
 });
 
 app.get('/:room', (req, res) => {
-  // 3. Make sure the file in your 'views' folder is named 'room.ejs' (lowercase)
-  res.render('room', { roomId: req.params.room });
+  // CHANGED: Now rendering 'meeting' instead of 'room'
+  res.render('meeting', { roomId: req.params.room });
 });
 
 io.on('connection', socket => {
