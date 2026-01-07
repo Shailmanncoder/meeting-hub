@@ -4,6 +4,7 @@ const server = require('http').Server(app);
 const io = require('socket.io')(server);
 const { v4: uuidV4 } = require('uuid');
 const path = require('path');
+const fs = require('fs'); // <--- This was missing!
 
 // 1. Strict Path Setting
 app.set('view engine', 'ejs');
@@ -25,7 +26,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/:room', (req, res) => {
-  // CHANGED: Now rendering 'meeting' instead of 'room'
+  // We are looking for 'meeting.ejs'
   res.render('meeting', { roomId: req.params.room });
 });
 
