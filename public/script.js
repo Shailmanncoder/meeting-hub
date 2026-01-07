@@ -2,7 +2,7 @@ const socket = io('/');
 const videoGrid = document.getElementById('video-grid');
 const myPeer = new Peer(undefined); 
 const myVideo = document.createElement('video');
-myVideo.muted = true; // Mute local video
+myVideo.muted = true; // IMPORTANT: Only mute yourself to prevent echo!
 
 const urlParams = new URLSearchParams(window.location.search);
 const userName = urlParams.get('name') || "User";
@@ -14,25 +14,18 @@ let isScreenSharing = false;
 let pendingSocketId = null;
 let pendingPeerId = null;
 
-// 1. SETUP & HOST CHECK
+// 1. SETUP
 myPeer.on('open', id => {
     myPeerId = id;
     socket.emit('join-room-init', ROOM_ID, userName, isHost, id);
 });
 
-// Server Responses
 socket.on('entry-granted', () => {
     document.getElementById('waiting-screen').style.display = 'none';
     document.getElementById('main-interface').classList.remove('hidden');
     document.getElementById('main-interface').style.display = 'flex';
     startVideo();
     startTimer();
-});
-
-socket.on('entry-denied', () => {
-    document.querySelector('#waiting-screen h2').innerText = "Access Denied";
-    document.querySelector('#waiting-screen p').innerText = "Host declined your request.";
-    document.querySelector('.spinner').style.display = 'none';
 });
 
 socket.on('request-entry', (data) => {
@@ -43,27 +36,30 @@ socket.on('request-entry', (data) => {
     document.getElementById('admit-modal').style.display = 'flex';
 });
 
-// 2. VIDEO LOGIC
+// 2. VIDEO & AUDIO LOGIC
 function startVideo() {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
         myVideoStream = stream;
         addVideoStream(myVideo, stream, myPeerId, userName + " (You)", true);
         
+        // Listen for calls
         myPeer.on('call', call => {
             call.answer(stream);
             const video = document.createElement('video');
             call.on('stream', userVideoStream => {
+                // False = This is NOT me, so Audio should be ON
                 addVideoStream(video, userVideoStream, call.peer, "Guest", false);
             });
         });
 
+        // Call others
         socket.on('user-connected', (peerId, uName) => {
             connectToNewUser(peerId, stream, uName);
         });
         
         setupChat();
-    }).catch(err => { console.error("Media Error", err); });
+    }).catch(err => { console.error("Media Error", err); alert("Microphone/Camera blocked."); });
 }
 
 function connectToNewUser(userId, stream, uName) {
@@ -93,7 +89,12 @@ function addVideoStream(video, stream, peerId, uName, isMine) {
     nameTag.className = 'name-tag';
     nameTag.innerHTML = `<span style="height:8px; width:8px; background:#27AE60; border-radius:50%; display:inline-block;"></span> ${uName}`;
 
+    // AUDIO FIX: Ensure remote videos are NOT muted
     video.srcObject = stream;
+    video.muted = isMine; // True if mine, False if others (so you can hear them)
+    video.playsInline = true; // Mobile fix
+    video.autoplay = true; 
+    
     video.addEventListener('loadedmetadata', () => { video.play(); });
 
     card.append(avatar);
@@ -102,7 +103,7 @@ function addVideoStream(video, stream, peerId, uName, isMine) {
     videoGrid.append(card);
 }
 
-// 3. SCREEN SHARE (ZOOM MODE)
+// 3. SCREEN SHARE (Fixes Visibility for Others)
 window.shareScreen = () => {
     if (isScreenSharing) { stopScreenShare(); return; }
 
@@ -111,20 +112,22 @@ window.shareScreen = () => {
         isScreenSharing = true;
         document.querySelector('.share-btn').classList.add('share-active-btn');
 
-        // A. Get the Screen Track
         let videoTrack = screenStream.getVideoTracks()[0];
         videoTrack.onended = function() { stopScreenShare(); };
 
-        // B. Replace Track for ALL Peers (Crucial Fix)
+        // Replace track for ALL connected peers
         for (let peerId in myPeer.connections) {
-            let sender = myPeer.connections[peerId][0].peerConnection.getSenders().find(s => s.track.kind === "video");
-            if(sender) sender.replaceTrack(videoTrack);
+            let connections = myPeer.connections[peerId];
+            if(connections && connections[0]) {
+                let sender = connections[0].peerConnection.getSenders().find(s => s.track.kind === "video");
+                if(sender) sender.replaceTrack(videoTrack);
+            }
         }
 
-        // C. Update Local View
+        // Show my screen locally
         activateZoomLayout(screenStream, true);
 
-        // D. Tell Everyone
+        // Tell others to switch layout
         socket.emit('toggle-media', { roomId: ROOM_ID, peerId: myPeerId, type: 'screen-start' });
 
     }).catch(err => { console.log("Screen share cancelled", err); });
@@ -134,11 +137,13 @@ function stopScreenShare() {
     isScreenSharing = false;
     document.querySelector('.share-btn').classList.remove('share-active-btn');
 
-    // Restore Camera
     let camTrack = myVideoStream.getVideoTracks()[0];
     for (let peerId in myPeer.connections) {
-        let sender = myPeer.connections[peerId][0].peerConnection.getSenders().find(s => s.track.kind === "video");
-        if(sender) sender.replaceTrack(camTrack);
+        let connections = myPeer.connections[peerId];
+        if(connections && connections[0]) {
+            let sender = connections[0].peerConnection.getSenders().find(s => s.track.kind === "video");
+            if(sender) sender.replaceTrack(camTrack);
+        }
     }
 
     deactivateZoomLayout();
@@ -147,17 +152,17 @@ function stopScreenShare() {
 
 // 4. LAYOUT MANAGERS
 function activateZoomLayout(stream, isMine) {
-    // Add class to squeeze top bar
     document.querySelector('.main__left').classList.add('screen-share-active');
     
-    // Setup Stage
     const stage = document.getElementById('screen-stage');
     stage.innerHTML = '';
     
     const stageVideo = document.createElement('video');
     stageVideo.srcObject = stream;
     stageVideo.autoplay = true;
-    if(isMine) stageVideo.muted = true; // Don't hear self
+    stageVideo.playsInline = true;
+    if(isMine) stageVideo.muted = true; // Mute if it's my own screen
+    else stageVideo.muted = false; // Hear audio if sharing tab audio
     
     stage.append(stageVideo);
 }
@@ -167,18 +172,20 @@ function deactivateZoomLayout() {
     document.getElementById('screen-stage').innerHTML = '';
 }
 
-// 5. EVENT LISTENERS (Remote Changes)
+// 5. LISTEN FOR EVENTS
 socket.on('update-media-status', ({ peerId, type, status }) => {
     if (type === 'video') {
         const card = document.getElementById(`card-${peerId}`);
         if (card) status ? card.classList.remove('video-off') : card.classList.add('video-off');
     }
     
+    // Remote Screen Share Started
     if (type === 'screen-start') {
-        // Find the sharer's video card and clone stream to big stage
+        // Find the video element of the person sharing
         const card = document.getElementById(`card-${peerId}`);
         if(card) {
             const videoEl = card.querySelector('video');
+            // Move that video stream to the big stage
             activateZoomLayout(videoEl.srcObject, false);
         }
     }
@@ -188,7 +195,7 @@ socket.on('update-media-status', ({ peerId, type, status }) => {
     }
 });
 
-// 6. CONTROLS (Mute/Video/Host)
+// 6. CONTROLS
 window.muteUnmute = () => {
     const enabled = myVideoStream.getAudioTracks()[0].enabled;
     if (enabled) {
@@ -226,7 +233,6 @@ function setButtonState(btn, active, icon) {
     else { b.innerHTML=`<i class="fas fa-${icon}-slash"></i>`; b.classList.add('button-red'); }
 }
 
-// 7. EXTRAS
 function setupChat() {
     let text = document.querySelector("#chat_message");
     document.addEventListener("keydown", (e) => {
@@ -244,9 +250,8 @@ function setupChat() {
 }
 window.toggleChat = () => {
     const chat = document.getElementById("chat-section");
-    const mainLeft = document.querySelector(".main__left");
-    if(chat.style.display === "none") { chat.style.display = "flex"; mainLeft.style.flex = "0.75"; }
-    else { chat.style.display = "none"; mainLeft.style.flex = "1"; }
+    if(chat.classList.contains('active')) chat.classList.remove('active');
+    else chat.classList.add('active');
 }
 window.raiseHand = () => { socket.emit('message', "✋ RAISED HAND"); alert("You raised your hand!"); }
 function startTimer() {
