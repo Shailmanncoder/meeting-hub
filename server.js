@@ -3,20 +3,23 @@ const app = express();
 const server = require('http').Server(app);
 const io = require('socket.io')(server);
 const { v4: uuidV4 } = require('uuid');
-const path = require('path'); // FIX 1: Import the path module
+const path = require('path'); // IMPORTANT: Imports the path tool
 
-// FIX 2: Explicitly tell Express where the 'views' folder is
+// --- THE FIX IS HERE ---
+// 1. Force Express to look in the exact 'views' folder using absolute paths
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
-// FIX 3: Explicitly tell Express where the 'public' folder is
+// 2. Force Express to look in the exact 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
+// -----------------------
 
 app.get('/', (req, res) => {
   res.redirect(`/${uuidV4()}`);
 });
 
 app.get('/:room', (req, res) => {
+  // 3. Make sure the file in your 'views' folder is named 'room.ejs' (lowercase)
   res.render('room', { roomId: req.params.room });
 });
 
