@@ -6,65 +6,40 @@ const { v4: uuidV4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 
-// --- PATH CONFIGURATION ---
+// 1. Setup
 app.set('view engine', 'ejs');
-// Force server to look in the correct 'views' folder
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ROUTES ---
-
-// 1. Home Page
+// 2. Home Page
 app.get('/', (req, res) => {
-    try {
-        res.render('home');
-    } catch (e) {
-        console.error("Home Page Error:", e.message);
-        res.send("Error loading home page: " + e.message);
-    }
+    res.render('home');
 });
 
-// 2. API: Generate New Room ID
-// ... previous code ...
+// 3. API: Generate Link (CRITICAL FOR BUTTON TO WORK)
+app.get('/api/new-room', (req, res) => {
+    console.log("API: Generating new room ID...");
+    res.json({ roomId: uuidV4() });
+});
 
-// 4. Meeting Route (UPDATED NAME)
+// 4. Video Room (Looking for 'video.ejs')
 app.get('/:room', (req, res) => {
     try {
-        // We renamed the file to 'video.ejs' to fix the lookup error
         res.render('video', { 
             roomId: req.params.room,
             meetingTopic: req.query.topic || "General Meeting"
         });
     } catch (e) {
         console.error("RENDER ERROR:", e);
-        res.status(500).send("Error loading video page: " + e.message);
+        res.status(500).send("Critical Error: " + e.message);
     }
 });
 
-// ... rest of the code ...
-
-// 3. Meeting Room (The critical part)
-app.get('/:room', (req, res) => {
-    try {
-        // We look for 'meeting.ejs'. Make sure your file is named 'meeting.ejs' inside views!
-        res.render('meeting', { 
-            roomId: req.params.room,
-            meetingTopic: req.query.topic || "General Meeting" // Pass topic to view
-        });
-    } catch (e) {
-        console.error("Meeting Page Error:", e.message);
-        // If 'meeting.ejs' is missing, it will tell you here
-        res.status(500).send("Error loading meeting. Did you rename room.ejs to meeting.ejs? Details: " + e.message);
-    }
-});
-
-// --- SOCKET LOGIC ---
+// 5. Socket Logic
 const roomHosts = {};
-
 io.on('connection', socket => {
     socket.on('join-room-init', (roomId, name, isHost, peerId) => {
         socket.join(roomId);
-        
         if (isHost === 'true') {
             roomHosts[roomId] = socket.id;
             socket.emit('entry-granted'); 
@@ -72,11 +47,10 @@ io.on('connection', socket => {
         } else {
             const hostSocket = roomHosts[roomId];
             if (hostSocket) {
-                // Ask Host for approval
                 io.to(hostSocket).emit('request-entry', { socketId: socket.id, name, peerId });
             } else {
-                // If no host is present, we make them wait
-                socket.emit('waiting-for-host');
+                socket.emit('entry-granted'); 
+                socket.to(roomId).emit('user-connected', peerId, name);
             }
         }
     });
